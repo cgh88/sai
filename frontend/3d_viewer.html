@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사이(Sai) · 3D 디지털 트윈 — 소방 동선</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#e9eef7;
+    --panel:rgba(9,13,19,.70);
+    --line:rgba(255,255,255,.10);
+    --red:#ff3b30;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:#05070b; overflow:hidden; color:var(--ink);
+    font-family:"Noto Sans KR",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  canvas{display:block}
+
+  #vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:2;
+    background:radial-gradient(ellipse at 52% 46%, rgba(0,0,0,0) 45%, rgba(0,0,0,.45) 100%);
+  }
+
+  #brand{
+    position:fixed; top:22px; left:24px; z-index:5;
+    padding:13px 18px 14px; border-radius:14px;
+    background:var(--panel); border:1px solid var(--line);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  #brand .row{display:flex; align-items:center; gap:9px; font-size:14px; font-weight:700; letter-spacing:.01em}
+  #brand .dot{width:7px; height:7px; border-radius:50%; background:#3ddc84; box-shadow:0 0 10px rgba(61,220,132,.9)}
+  #brand .sub{margin-top:5px; font-size:11.5px; font-weight:500; color:rgba(233,238,247,.58); letter-spacing:.02em}
+  #brand .alarm{
+    margin-top:9px; display:inline-flex; align-items:center; gap:7px;
+    font-size:11.5px; font-weight:700; color:#ff9d95;
+    background:rgba(255,59,48,.13); border:1px solid rgba(255,59,48,.34);
+    padding:4px 9px; border-radius:7px;
+  }
+  #brand .alarm i{width:6px;height:6px;border-radius:50%;background:var(--red);display:block;box-shadow:0 0 8px var(--red)}
+
+  #cam-panel{
+    position:fixed; top:22px; right:24px; z-index:5;
+    display:flex; gap:6px; padding:7px; border-radius:16px;
+    background:var(--panel); border:1px solid var(--line);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+    max-width:calc(100vw - 48px); flex-wrap:wrap; justify-content:flex-end;
+  }
+  .cam-btn{
+    appearance:none; -webkit-appearance:none; cursor:pointer;
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 15px; border-radius:11px; border:1px solid transparent;
+    background:rgba(255,255,255,.055); color:#cfd8e6;
+    font-family:inherit; font-size:13.5px; font-weight:700; line-height:1; letter-spacing:.005em;
+    transition:background .18s ease, color .18s ease, box-shadow .18s ease, border-color .18s ease;
+    white-space:nowrap;
+  }
+  .cam-btn .ico{font-size:14px; line-height:1; display:block}
+  .cam-btn:hover{background:rgba(255,255,255,.11); color:#fff}
+  .cam-btn:focus-visible{outline:2px solid rgba(120,180,255,.8); outline-offset:2px}
+  .cam-btn.active{
+    background:#f4f7ff; color:#0a0f16; border-color:#fff;
+    box-shadow:0 2px 16px rgba(255,255,255,.20);
+  }
+  .cam-btn.danger.active{
+    background:linear-gradient(180deg,#ff4a3f,#e12a20); color:#fff;
+    border-color:rgba(255,140,130,.85);
+    box-shadow:0 3px 20px rgba(255,59,48,.5);
+  }
+
+  #hint{
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:5;
+    font-size:11px; font-weight:500; color:rgba(233,238,247,.30); letter-spacing:.06em;
+    pointer-events:none; white-space:nowrap;
+  }
+  #hint b{color:rgba(233,238,247,.55); font-weight:700}
+
+  #loader{
+    position:fixed; inset:0; z-index:20; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:16px;
+    background:radial-gradient(ellipse at 50% 45%, #101823 0%, #05080c 70%);
+    transition:opacity .55s ease;
+  }
+  #loader .t{font-size:14px; font-weight:700; letter-spacing:.14em; color:rgba(233,238,247,.8)}
+  #loader .bar{width:190px; height:2px; background:rgba(255,255,255,.12); border-radius:2px; overflow:hidden}
+  #loader .bar i{display:block; height:100%; width:35%; background:linear-gradient(90deg,transparent,#ff5a4e,transparent); animation:slide 1.15s ease-in-out infinite}
+  #loader.hide{opacity:0; pointer-events:none}
+  @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(390%)}}
+
+  body.no-hud #brand, body.no-hud #cam-panel, body.no-hud #hint{display:none}
+</style>
+</head>
+<body>
+<div id="vignette"></div>
+
+<div id="brand">
+  <div class="row"><span class="dot"></span>사이(Sai) · 3D 디지털 트윈</div>
+  <div class="sub">새들마을 3단지 · 지하 2층 B-27</div>
+  <div class="alarm"><i></i>위반 1건 · 소방 동선 차단</div>
+</div>
+
+<div id="cam-panel" role="group" aria-label="카메라 프리셋">
+  <button class="cam-btn active" data-view="entrance" type="button"><span class="ico">🎥</span>진입로 뷰</button>
+  <button class="cam-btn" data-view="top" type="button"><span class="ico">🎥</span>상공 탑 뷰</button>
+  <button class="cam-btn danger active" id="btn-violation" type="button" aria-pressed="true"><span class="ico">🚨</span>위반 분석 모드</button>
+</div>
+
+<div id="hint"><b>1</b> 진입로 · <b>2</b> 탑 뷰 · <b>3</b> 위반 분석 · 드래그 회전 / 휠 확대</div>
+
+<div id="loader"><div class="t">3D 씬 준비 중</div><div class="bar"><i></i></div></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three.module.js",
+    "three/addons/": "/vendor/addons/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+/* ────────────────────────────────────────────────────────────
+   사이(Sai) · 3D 디지털 트윈 뷰어 — 데모 영상 씬 10
+   1) 주차 구획 바닥 격자        2) 소방차 전용구역(빗금·라벨)
+   3) 위반 SUV + 맥동 링          4) 끊긴 소방 동선(점선·✕)
+   5) 카메라 프리셋 3버튼(진입로 / 탑 / 위반분석)
+   ──────────────────────────────────────────────────────────── */
+
+const params = new URLSearchParams(location.search);
+const KFONT = '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic","Noto Sans CJK KR","Nanum Gothic",sans-serif';
+
+/* ── 치수 (단위 = m) ───────────────────────────────────────── */
+const LOT = {
+  x0: -14, x1: 12,
+  rowN: { far: -12.6, near: -7.6 },   // 북측(안쪽) 구획
+  rowS: { far: -2.6, near: 2.4 },     // 남측(가까운) 구획
+};
+const LANE = { far: -7.6, near: -2.6 };                       // 주행 차로
+const FIRE = { x0: 6.4, x1: 11.5, z0: -12.6, z1: -7.6 };      // 소방차 전용구역(2면)
+const FIRE_C = { x: (FIRE.x0 + FIRE.x1) / 2, z: (FIRE.z0 + FIRE.z1) / 2 };
+const SUV_POS = { x: FIRE.x1 - 1.45, z: -9.95, rot: 0.19 };    // 비뚤게 주차 → 차로 침범
+const BLOCK_PT = new THREE.Vector3(FIRE.x1 - 1.6, 0.06, -7.26); // 경로가 끊기는 지점
+
+/* ── 렌더러 / 씬 ───────────────────────────────────────────── */
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.22;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#0e1621');
+scene.fog = new THREE.FogExp2('#0e1621', 0.0088);
+
+const camera = new THREE.PerspectiveCamera(44, innerWidth / innerHeight, 0.1, 500);
+camera.position.set(-11, 3.2, -5.0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.055;
+controls.minDistance = 4;
+controls.maxDistance = 90;
+controls.maxPolarAngle = Math.PI / 2 - 0.03;
+controls.target.set(10.2, 1.5, -8.9);
+
+/* ── 조명 ─────────────────────────────────────────────────── */
+scene.add(new THREE.HemisphereLight('#c9ddff', '#232a33', 1.85));
+
+const key = new THREE.DirectionalLight('#eaf2ff', 2.6);
+key.position.set(7, 26, 13);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -24;
+key.shadow.camera.right = 24;
+key.shadow.camera.top = 22;
+key.shadow.camera.bottom = -18;
+key.shadow.camera.near = 1;
+key.shadow.camera.far = 90;
+key.shadow.bias = -0.0004;
+key.shadow.normalBias = 0.03;
+scene.add(key);
+scene.add(key.target);
+key.target.position.set(0, 0, -5);
+
+const fill = new THREE.DirectionalLight('#8fb4e8', 0.75);
+fill.position.set(-16, 13, -11);
+scene.add(fill);
+
+// 지하주차장 형광등 느낌의 낮은 조명
+[[-11, -5], [-3, -5], [5, -5], [10.5, -4]].forEach(([x, z]) => {
+  const p = new THREE.PointLight('#cfe2ff', 42, 26, 2);
+  p.position.set(x, 5.6, z);
+  scene.add(p);
+});
+
+/* ── 캔버스 텍스처 유틸 ────────────────────────────────────── */
+function makeCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+function canvasTexture(c, { srgb = true, repeat = null } = {}) {
+  const t = new THREE.CanvasTexture(c);
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  if (repeat) {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeat[0], repeat[1]);
+  }
+  return t;
+}
+
+/* 소방차 전용구역 — 노란 바탕 + 검은 대각선 빗금 */
+function makeHatchTexture() {
+  const S = 512;
+  const c = makeCanvas(S, S);
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, S, S);
+  grad.addColorStop(0, '#f8d02c');
+  grad.addColorStop(1, '#e8b60f');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, S, S);
+
+  g.strokeStyle = '#14171c';
+  g.lineWidth = 56;
+  for (let i = -S; i < S * 2; i += 132) {
+    g.beginPath();
+    g.moveTo(i, 0);
+    g.lineTo(i + S, S);
+    g.stroke();
+  }
+
+  // 마모 텍스처
+  g.globalAlpha = 0.09;
+  for (let i = 0; i < 300; i++) {
+    g.fillStyle = Math.random() > 0.5 ? '#ffffff' : '#000000';
+    g.fillRect(Math.random() * S, Math.random() * S, Math.random() * 8, Math.random() * 8);
+  }
+  g.globalAlpha = 1;
+  return canvasTexture(c, { repeat: [1.5, 2.1] });
+}
+
+/* 점선 리본 텍스처 (u: 폭, v: 진행방향) */
+function makeDashTexture() {
+  const W = 96, H = 320;
+  const c = makeCanvas(W, H);
+  const g = c.getContext('2d');
+  g.fillStyle = '#ff3a2c';
+  roundRect(g, 3, 30, W - 6, 150, 8);
+  g.fill();
+  const t = canvasTexture(c, { repeat: [1, 1 / 1.5] });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/* 바닥 붉은 글로우 */
+function makeGlowTexture() {
+  const S = 256;
+  const c = makeCanvas(S, S);
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  grd.addColorStop(0, 'rgba(255,86,70,0.40)');
+  grd.addColorStop(0.30, 'rgba(255,58,46,0.18)');
+  grd.addColorStop(0.62, 'rgba(255,46,36,0.07)');
+  grd.addColorStop(1, 'rgba(255,40,30,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, S, S);
+  return canvasTexture(c);
+}
+
+/* ── 한글 라벨 스프라이트 ──────────────────────────────────── */
+function makeLabel({ text, sub = '', fg = '#ffffff', accent = '#f5c518', bg = 'rgba(10,14,20,0.90)' }) {
+  const S = 2, fs = 58 * S, subfs = 32 * S, padx = 26 * S, pady = 20 * S, bar = 9 * S;
+  const probe = makeCanvas(8, 8).getContext('2d');
+  probe.font = `700 ${fs}px ${KFONT}`;
+  const tw = probe.measureText(text).width;
+  probe.font = `600 ${subfs}px ${KFONT}`;
+  const sw = sub ? probe.measureText(sub).width : 0;
+
+  const W = Math.ceil(Math.max(tw, sw) + padx * 2 + bar + 6 * S);
+  const H = Math.ceil(fs + (sub ? subfs * 1.8 : 0) + pady * 2);
+  const c = makeCanvas(W, H);
+  const g = c.getContext('2d');
+
+  g.fillStyle = bg;
+  roundRect(g, 0, 0, W, H, 15 * S);
+  g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.16)';
+  g.lineWidth = 1.6 * S;
+  roundRect(g, 0.8 * S, 0.8 * S, W - 1.6 * S, H - 1.6 * S, 15 * S);
+  g.stroke();
+
+  g.fillStyle = accent;
+  roundRect(g, 0, 0, bar, H, 5 * S);
+  g.fill();
+
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.fillStyle = fg;
+  g.font = `700 ${fs}px ${KFONT}`;
+  g.fillText(text, padx + bar, sub ? pady + fs * 0.52 : H / 2 + 1);
+  if (sub) {
+    g.font = `600 ${subfs}px ${KFONT}`;
+    g.fillStyle = 'rgba(255,255,255,0.66)';
+    g.fillText(sub, padx + bar, pady + fs * 1.04 + subfs * 0.4);
+  }
+
+  const tex = canvasTexture(c);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+  const sp = new THREE.Sprite(mat);
+  sp.userData.aspect = W / H;
+  sp.renderOrder = 20;
+  return sp;
+}
+function sizeLabel(sp, worldH) {
+  sp.scale.set(worldH * sp.userData.aspect, worldH, 1);
+  return sp;
+}
+
+/* ✕ 진입 불가 배지 — 한 장의 패널 안에 모두 그린다 */
+function makeBlockBadge() {
+  const S = 2;
+  const main = '진입 불가', sub = '소방 진입로 차단';
+  const mfs = 62 * S, sfs = 34 * S;
+  const probe = makeCanvas(8, 8).getContext('2d');
+  probe.font = `700 ${mfs}px ${KFONT}`;
+  const tw = probe.measureText(main).width;
+  probe.font = `600 ${sfs}px ${KFONT}`;
+  const sw = probe.measureText(sub).width;
+
+  const W = Math.ceil(Math.max(tw, sw, 200 * S) + 120 * S);
+  const H = 600 * S;
+  const c = makeCanvas(W, H);
+  const g = c.getContext('2d');
+
+  // 패널
+  g.fillStyle = 'rgba(9,13,19,0.90)';
+  roundRect(g, 0, 0, W, H, 26 * S); g.fill();
+  g.strokeStyle = 'rgba(255,74,60,0.55)'; g.lineWidth = 2.4 * S;
+  roundRect(g, 1.2 * S, 1.2 * S, W - 2.4 * S, H - 2.4 * S, 26 * S); g.stroke();
+
+  // X 원형
+  const cx = W / 2, cy = 178 * S, r = 104 * S;
+  g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2);
+  g.fillStyle = 'rgba(38,10,8,0.92)'; g.fill();
+  g.lineWidth = 11 * S; g.strokeStyle = '#ff3b30'; g.stroke();
+
+  g.lineCap = 'round';
+  g.strokeStyle = '#ff5a4e';
+  g.lineWidth = 20 * S;
+  const d = r * 0.44;
+  g.beginPath();
+  g.moveTo(cx - d, cy - d); g.lineTo(cx + d, cy + d);
+  g.moveTo(cx + d, cy - d); g.lineTo(cx - d, cy + d);
+  g.stroke();
+
+  // 텍스트
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#ffffff';
+  g.font = `700 ${mfs}px ${KFONT}`;
+  g.fillText(main, W / 2, 372 * S);
+  g.fillStyle = 'rgba(255,255,255,0.60)';
+  g.font = `600 ${sfs}px ${KFONT}`;
+  g.fillText(sub, W / 2, 448 * S);
+
+  const tex = canvasTexture(c);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+  const sp = new THREE.Sprite(mat);
+  sp.userData.aspect = W / H;
+  sp.renderOrder = 21;
+  return sp;
+}
+
+/* ── 월드 ─────────────────────────────────────────────────── */
+const world = new THREE.Group();
+scene.add(world);
+
+// 주차장 슬래브
+const slab = new THREE.Mesh(
+  new THREE.BoxGeometry(LOT.x1 - LOT.x0 + 4.6, 0.5, LOT.rowS.near - LOT.rowN.far + 4.4),
+  new THREE.MeshStandardMaterial({ color: '#2c323b', roughness: 0.93, metalness: 0.02 })
+);
+slab.position.set((LOT.x0 + LOT.x1) / 2, -0.25, (LOT.rowN.far + LOT.rowS.near) / 2);
+slab.receiveShadow = true;
+slab.userData.tag = 'floor';
+world.add(slab);
+
+// 차로 바닥
+const laneFloor = new THREE.Mesh(
+  new THREE.PlaneGeometry(LOT.x1 - LOT.x0 + 4.4, LANE.near - LANE.far),
+  new THREE.MeshStandardMaterial({ color: '#353c47', roughness: 0.9, metalness: 0.03 })
+);
+laneFloor.rotation.x = -Math.PI / 2;
+laneFloor.position.set((LOT.x0 + LOT.x1) / 2, 0.004, (LANE.far + LANE.near) / 2);
+laneFloor.receiveShadow = true;
+world.add(laneFloor);
+
+// 벽 (지하주차장 경계)
+const wallMat = new THREE.MeshStandardMaterial({ color: '#2b333f', roughness: 0.92, metalness: 0.02 });
+const backWall = new THREE.Mesh(new THREE.BoxGeometry(LOT.x1 - LOT.x0 + 6.4, 3.4, 0.45), wallMat);
+backWall.position.set((LOT.x0 + LOT.x1) / 2, 1.7, LOT.rowN.far - 0.5);
+backWall.receiveShadow = true;
+world.add(backWall);
+
+const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.45, 3.4, LOT.rowS.near - LOT.rowN.far + 1.6), wallMat);
+sideWall.position.set(LOT.x1 + 1.0, 1.7, (LOT.rowN.far + LOT.rowS.near) / 2);
+sideWall.receiveShadow = true;
+world.add(sideWall);
+
+// 벽 디테일 — 안전 스트라이프 · 상단 배관
+const stripe = new THREE.Mesh(
+  new THREE.BoxGeometry(LOT.x1 - LOT.x0 + 6.2, 0.22, 0.06),
+  new THREE.MeshStandardMaterial({ color: '#3d4652', roughness: 0.85 })
+);
+stripe.position.set((LOT.x0 + LOT.x1) / 2, 2.55, LOT.rowN.far - 0.26);
+world.add(stripe);
+
+const pipeMat = new THREE.MeshStandardMaterial({ color: '#4a535f', roughness: 0.6, metalness: 0.3 });
+const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, LOT.x1 - LOT.x0 + 6, 10), pipeMat);
+pipe.rotation.z = Math.PI / 2;
+pipe.position.set((LOT.x0 + LOT.x1) / 2, 3.05, LOT.rowN.far - 0.32);
+pipe.visible = false;
+world.add(pipe);
+
+// 구획선
+function flatBar(x1, z1, x2, z2, width, { color = '#eef4ff', opacity = 0.72, y = 0.012, tag = 'stall-line' } = {}) {
+  const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz);
+  const geo = new THREE.PlaneGeometry(len, width);
+  geo.rotateX(-Math.PI / 2);
+  geo.rotateY(-Math.atan2(dz, dx));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity, depthWrite: false
+  }));
+  mesh.position.set((x1 + x2) / 2, y, (z1 + z2) / 2);
+  mesh.renderOrder = 2;
+  mesh.userData.tag = tag;
+  world.add(mesh);
+  return mesh;
+}
+
+// 북측 구획 (8칸)
+const northCount = Math.max(1, Math.round((FIRE.x0 - LOT.x0) / 2.7));
+const nw = (FIRE.x0 - LOT.x0) / northCount;
+for (let i = 0; i <= northCount; i++) {
+  const x = LOT.x0 + i * nw;
+  flatBar(x, LOT.rowN.far, x, LOT.rowN.near, 0.1);
+}
+flatBar(LOT.x0, LOT.rowN.far, FIRE.x0, LOT.rowN.far, 0.11);
+flatBar(LOT.x0, LOT.rowN.near, FIRE.x0, LOT.rowN.near, 0.13);
+
+// 남측 구획
+const southCount = Math.max(1, Math.round((LOT.x1 - LOT.x0) / 2.7));
+const sw = (LOT.x1 - LOT.x0) / southCount;
+for (let i = 0; i <= southCount; i++) {
+  const x = LOT.x0 + i * sw;
+  flatBar(x, LOT.rowS.far, x, LOT.rowS.near, 0.1);
+}
+flatBar(LOT.x0, LOT.rowS.near, LOT.x1, LOT.rowS.near, 0.11);
+flatBar(LOT.x0, LOT.rowS.far, LOT.x1, LOT.rowS.far, 0.13);
+
+// 차로 중앙 점선은 소방 동선과 겹치므로 생략
+
+/* ── 기둥 (공간감) ─────────────────────────────────────────── */
+const colMat = new THREE.MeshStandardMaterial({ color: '#2f3742', roughness: 0.88, metalness: 0.04 });
+[[-11.3, LOT.rowN.near], [-6.4, LOT.rowN.near], [-9.0, LOT.rowS.near], [2.4, LOT.rowS.near]].forEach(([x, z]) => {
+  const col = new THREE.Mesh(new THREE.BoxGeometry(0.62, 3.4, 0.62), colMat);
+  col.position.set(x, 1.7, z);
+  col.castShadow = true;
+  col.receiveShadow = true;
+  world.add(col);
+  // 하단 노란 안전띠
+  const band = new THREE.Mesh(
+    new THREE.BoxGeometry(0.66, 0.34, 0.66),
+    new THREE.MeshStandardMaterial({ color: '#e8b60f', roughness: 0.7 })
+  );
+  band.position.set(x, 0.5, z);
+  world.add(band);
+});
+
+/* ── 천장 형광등 (지하주차장 분위기) — 아래를 향한 면만 발광 ── */
+const lampMat = new THREE.MeshBasicMaterial({ color: '#dce9ff' });
+const lampHouseMat = new THREE.MeshStandardMaterial({ color: '#20262e', roughness: 0.8 });
+[-10, -4, 2, 8].forEach((x) => {
+  const house = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 3.4), lampHouseMat);
+  house.position.set(x, 4.40, -5.1);
+  world.add(house);
+
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 3.2), lampMat);
+  face.rotation.x = Math.PI / 2;          // 법선이 아래(-y)를 향함 → 위에서는 보이지 않음
+  face.position.set(x, 4.33, -5.1);
+  world.add(face);
+
+  const rod = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.0, 0.05), lampHouseMat);
+  rod.position.set(x, 5.0, -5.1);
+  world.add(rod);
+});
+
+/* ── 소방차 전용구역 (스펙 2) ──────────────────────────────── */
+const fireGroup = new THREE.Group();
+fireGroup.userData.tag = 'fire-zone';
+world.add(fireGroup);
+
+const firePlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(FIRE.x1 - FIRE.x0, FIRE.z1 - FIRE.z0),
+  new THREE.MeshStandardMaterial({
+    map: makeHatchTexture(), roughness: 0.7, metalness: 0.02,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+  })
+);
+firePlane.rotation.x = -Math.PI / 2;
+firePlane.position.set(FIRE_C.x, 0.014, FIRE_C.z);
+firePlane.receiveShadow = true;
+firePlane.userData.tag = 'fire-hatch';
+fireGroup.add(firePlane);
+
+// 노란 테두리
+[[FIRE.x0, FIRE.z0, FIRE.x1, FIRE.z0], [FIRE.x0, FIRE.z1, FIRE.x1, FIRE.z1],
+ [FIRE.x0, FIRE.z0, FIRE.x0, FIRE.z1], [FIRE.x1, FIRE.z0, FIRE.x1, FIRE.z1]]
+  .forEach(([a, b, c, d]) => flatBar(a, b, c, d, 0.16, { color: '#ffd83d', opacity: 0.95, y: 0.02, tag: 'fire-border' }));
+
+/* ── 모델 로더 ─────────────────────────────────────────────── */
+const loader = new GLTFLoader();
+function loadModel(sources) {
+  return new Promise((resolve, reject) => {
+    let i = 0;
+    const next = () => {
+      if (i >= sources.length) return reject(new Error('GLB load failed: ' + sources.join(', ')));
+      loader.load(sources[i++], resolve, undefined, next);
+    };
+    next();
+  });
+}
+
+// 원점을 바닥 중앙에 맞추고 길이(z)를 targetLen으로 정규화
+function normalize(root, targetLen) {
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  const s = targetLen / Math.max(size.z, 0.001);
+  root.scale.setScalar(s);
+  box.setFromObject(root);
+  const c = box.getCenter(new THREE.Vector3());
+  root.position.x -= c.x;
+  root.position.z -= c.z;
+  root.position.y -= box.min.y;
+  root.traverse((o) => {
+    if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+  });
+  return root;
+}
+
+const suvGroup = new THREE.Group();
+const suvMaterials = [];
+world.add(suvGroup);
+suvGroup.userData.tag = 'violation-car';
+
+/* ── 위반 하이라이트 (스펙 3) ──────────────────────────────── */
+const violationGroup = new THREE.Group();
+violationGroup.userData.tag = 'violation-overlays';
+world.add(violationGroup);
+
+const glowTex = makeGlowTexture();
+
+// 바닥 붉은 글로우
+const floorGlow = new THREE.Mesh(
+  new THREE.PlaneGeometry(7.2, 7.2),
+  new THREE.MeshBasicMaterial({
+    map: glowTex, transparent: true, opacity: 0.8, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+);
+floorGlow.rotation.x = -Math.PI / 2;
+floorGlow.position.set(SUV_POS.x, 0.022, SUV_POS.z);
+floorGlow.renderOrder = 3;
+floorGlow.userData.tag = 'ring';
+violationGroup.add(floorGlow);
+
+// 메인 맥동 링
+const ringMat = new THREE.MeshBasicMaterial({
+  color: 0xff2f24, side: THREE.DoubleSide, transparent: true, opacity: 0.95,
+  depthWrite: false
+});
+const ring = new THREE.Mesh(new THREE.RingGeometry(2.34, 2.88, 96), ringMat);
+ring.rotation.x = -Math.PI / 2;
+ring.position.set(SUV_POS.x, 0.05, SUV_POS.z);
+ring.renderOrder = 4;
+ring.userData.tag = 'ring';
+violationGroup.add(ring);
+
+// 3D 토러스 — 낮은 시점에서도 링이 보이도록
+const torusMat = new THREE.MeshBasicMaterial({
+  color: 0xff2f24, transparent: true, opacity: 0.95, depthWrite: false
+});
+const torus = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.11, 12, 96), torusMat);
+torus.rotation.x = -Math.PI / 2;
+torus.position.set(SUV_POS.x, 0.09, SUV_POS.z);
+torus.renderOrder = 5;
+torus.userData.tag = 'ring';
+violationGroup.add(torus);
+
+// 소나 리플
+const sonarMat = new THREE.MeshBasicMaterial({
+  color: 0xff4a3c, side: THREE.DoubleSide, transparent: true, opacity: 0.4,
+  depthWrite: false
+});
+const sonar = new THREE.Mesh(new THREE.RingGeometry(2.9, 3.04, 96), sonarMat);
+sonar.rotation.x = -Math.PI / 2;
+sonar.position.set(SUV_POS.x, 0.052, SUV_POS.z);
+sonar.renderOrder = 4;
+violationGroup.add(sonar);
+
+// 차량 위 붉은 라이트
+const alarmLight = new THREE.PointLight(0xff2a18, 10, 16, 2);
+alarmLight.position.set(SUV_POS.x, 2.6, SUV_POS.z);
+violationGroup.add(alarmLight);
+
+/* ── 끊긴 소방 동선 (스펙 4) ───────────────────────────────── */
+const pathPoints = [
+  new THREE.Vector3(-17.0, 0, -5.1),
+  new THREE.Vector3(-12.0, 0, -5.12),
+  new THREE.Vector3(-5.0, 0, -5.1),
+  new THREE.Vector3(2.0, 0, -5.12),
+  new THREE.Vector3(6.6, 0, -5.35),
+  new THREE.Vector3(8.55, 0, -6.05),
+  new THREE.Vector3(BLOCK_PT.x, 0, BLOCK_PT.z)
+];
+const curve = new THREE.CatmullRomCurve3(pathPoints, false, 'catmullrom', 0.22);
+const curvePts = curve.getPoints(320);
+
+// 리본 지오메트리 (폭 방향 u, 진행 방향 v)
+function buildRibbon(points, width) {
+  const pos = [], uv = [], idx = [];
+  let dist = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const t = i === 0 ? points[1].clone().sub(p) : p.clone().sub(points[i - 1]);
+    t.y = 0;
+    t.normalize();
+    const n = new THREE.Vector3(-t.z, 0, t.x).multiplyScalar(width / 2);
+    if (i > 0) dist += p.distanceTo(points[i - 1]);
+    pos.push(p.x + n.x, p.y, p.z + n.z, p.x - n.x, p.y, p.z - n.z);
+    uv.push(0, dist, 1, dist);
+    if (i > 0) {
+      const a = (i - 1) * 2, b = a + 1, c = i * 2, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+const dashTex = makeDashTexture();
+
+// (a) 바닥 붉은 점선 리본
+const ribbonMat = new THREE.MeshBasicMaterial({
+  map: dashTex, transparent: true, opacity: 0.95, depthWrite: false, color: 0xff3b2a,
+  side: THREE.DoubleSide
+});
+const ribbon = new THREE.Mesh(buildRibbon(curvePts, 0.22), ribbonMat);
+ribbon.position.y = 0.036;
+ribbon.renderOrder = 5;
+ribbon.userData.tag = 'path-dash';
+violationGroup.add(ribbon);
+
+// (b) 아주 얇은 발광 라인 (점선 위)
+const ribbonGlowMat = new THREE.MeshBasicMaterial({
+  map: dashTex, transparent: true, opacity: 0.10, depthWrite: false,
+  blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+});
+const ribbonGlow = new THREE.Mesh(buildRibbon(curvePts, 0.30), ribbonGlowMat);
+ribbonGlow.position.y = 0.034;
+ribbonGlow.renderOrder = 4;
+ribbonGlow.visible = false;
+violationGroup.add(ribbonGlow);
+
+// (c) LineDashedMaterial — 스펙 요구 라인 (computeLineDistances 필수)
+const lineGeo = new THREE.BufferGeometry().setFromPoints(
+  curvePts.map((p) => new THREE.Vector3(p.x, 0.13, p.z))
+);
+const lineMat = new THREE.LineDashedMaterial({
+  color: 0xff2a1f, dashSize: 0.9, gapSize: 0.6,
+  transparent: true, opacity: 0.85, depthWrite: false
+});
+const dashLine = new THREE.Line(lineGeo, lineMat);
+dashLine.computeLineDistances();
+dashLine.renderOrder = 6;
+dashLine.userData.tag = 'path-line';
+violationGroup.add(dashLine);
+
+// (d) 경로 끝 ✕ 마커
+const blockGlow = new THREE.Mesh(
+  new THREE.PlaneGeometry(3.2, 3.2),
+  new THREE.MeshBasicMaterial({
+    map: glowTex, transparent: true, opacity: 0.75, depthWrite: false,
+    blending: THREE.AdditiveBlending
+  })
+);
+blockGlow.rotation.x = -Math.PI / 2;
+blockGlow.position.set(BLOCK_PT.x, 0.03, BLOCK_PT.z);
+blockGlow.renderOrder = 4;
+violationGroup.add(blockGlow);
+
+const blockBadge = sizeLabel(makeBlockBadge(), 2.15);
+blockBadge.position.set(FIRE.x1 + 0.75, 2.15, -8.35);
+blockBadge.userData.tag = 'block-marker';
+violationGroup.add(blockBadge);
+
+/* ── 라벨 (소방차 전용) — 폰트 준비 후 생성 ─────────────────── */
+let fireLabel = null;
+async function buildLabels() {
+  try {
+    await Promise.race([
+      Promise.all([
+        document.fonts.load(`700 58px "Noto Sans KR"`),
+        document.fonts.load(`600 32px "Noto Sans KR"`),
+        document.fonts.load(`900 58px "Noto Sans KR"`)
+      ]),
+      new Promise((r) => setTimeout(r, 4000))
+    ]);
+  } catch (e) { /* 폴백 폰트 */ }
+
+  fireLabel = sizeLabel(makeLabel({
+    text: '소방차 전용',
+    sub: '주차 금지 · 소방기본법 제21조의2',
+    accent: '#f5c518'
+  }), 0.92);
+  fireLabel.position.set(FIRE_C.x - 0.9, 3.15, FIRE.z0 + 0.5);
+  fireLabel.userData.tag = 'fire-label';
+  violationGroup.add(fireLabel);
+}
+
+/* ── 카메라 프리셋 (스펙 5) ────────────────────────────────── */
+const PRESETS = {
+  entrance: { pos: new THREE.Vector3(-9.0, 2.15, -5.1), target: new THREE.Vector3(10.2, 1.5, -9.3), fov: 44 },
+  top: { pos: new THREE.Vector3(-1.0, 32, 8.0), target: new THREE.Vector3(-1.0, 0, -5.4), fov: 40 }
+};
+const INTRO = { pos: new THREE.Vector3(-16.8, 4.3, -4.4), target: new THREE.Vector3(10.2, 1.5, -9.3), fov: 52 };
+
+const tween = {
+  active: false, t: 0, dur: 3.4, startMs: 0,
+  from: { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 45 },
+  to: { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 45 }
+};
+const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+function moveCamera(to, dur = 3.4) {
+  tween.from.pos.copy(camera.position);
+  tween.from.target.copy(controls.target);
+  tween.from.fov = camera.fov;
+  tween.to.pos.copy(to.pos);
+  tween.to.target.copy(to.target);
+  tween.to.fov = to.fov ?? camera.fov;
+  tween.dur = dur;
+  tween.t = 0;
+  tween.startMs = performance.now();
+  tween.active = true;
+  controls.enabled = false;
+}
+
+const state = { preset: 'entrance', violation: true, ready: false };
+
+function setPreset(name, dur = 3.4) {
+  const p = PRESETS[name];
+  if (!p) return;
+  moveCamera(p, dur);
+  document.querySelectorAll('[data-view]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === name);
+  });
+  state.preset = name;
+}
+
+function snapCamera(to) {
+  camera.position.copy(to.pos);
+  controls.target.copy(to.target);
+  camera.fov = to.fov ?? camera.fov;
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+
+/* ── 위반 분석 모드 토글 ───────────────────────────────────── */
+let vTarget = 1, vLevel = 1;
+
+function setViolation(on) {
+  state.violation = on;
+  vTarget = on ? 1 : 0;
+  const btn = document.getElementById('btn-violation');
+  btn.classList.toggle('active', on);
+  btn.setAttribute('aria-pressed', String(on));
+}
+document.getElementById('btn-violation').addEventListener('click', () => setViolation(!state.violation));
+document.querySelectorAll('[data-view]').forEach((b) => {
+  b.addEventListener('click', () => setPreset(b.dataset.view));
+});
+
+// 카메라 조작 중이면 트윈 취소
+renderer.domElement.addEventListener('pointerdown', () => {
+  if (tween.active) { tween.active = false; controls.enabled = true; }
+});
+
+addEventListener('keydown', (e) => {
+  if (e.key === '1') setPreset('entrance');
+  if (e.key === '2') setPreset('top');
+  if (e.key === '3') setViolation(!state.violation);
+});
+
+/* ── 주변 차량 · 배경 ───────────────────────────────────────── */
+const hatchSlots = [
+  { x: -10.4, z: LOT.rowN.near - 2.6, rot: 0, tint: '#8f9baa' },
+  { x: -6.4, z: LOT.rowN.near - 2.6, rot: 0, tint: '#aab6c4' },
+  { x: 8.8, z: LOT.rowS.far + 2.55, rot: Math.PI, tint: '#7d8896' },
+  { x: 11.2, z: LOT.rowS.far + 2.55, rot: Math.PI, tint: '#9aa6b4' },
+  { x: -8.2, z: LOT.rowS.far + 2.55, rot: Math.PI, tint: '#c2cad4' }
+];
+
+async function buildWorld() {
+  await buildLabels();
+
+  // SUV (위반 차량)
+  try {
+    const gltf = await loadModel([
+      'assets/family-crossover-suv-42027f.glb',
+      'https://polyfork.dev/cdn/family-crossover-suv-42027f.glb'
+    ]);
+    const suv = normalize(gltf.scene, 4.62);
+    suv.traverse((o) => {
+      if (o.isMesh) {
+        o.material = o.material.clone();
+        o.material.emissive = new THREE.Color(0xff3b30);
+        o.material.emissiveIntensity = 0;
+        suvMaterials.push(o.material);
+      }
+    });
+    suvGroup.add(suv);
+    suvGroup.position.set(SUV_POS.x, 0, SUV_POS.z);
+    suvGroup.rotation.y = SUV_POS.rot;
+    suvGroup.userData.loaded = true;
+  } catch (err) {
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 1.5, 4.5),
+      new THREE.MeshStandardMaterial({ color: '#9aa6b6', roughness: 0.5 })
+    );
+    body.position.y = 0.95;
+    body.castShadow = true;
+    suvGroup.add(body);
+    suvGroup.position.set(SUV_POS.x, 0, SUV_POS.z);
+    suvGroup.rotation.y = SUV_POS.rot;
+    suvGroup.userData.loaded = false;
+    console.warn('SUV GLB 로드 실패 — 폴백 차량 사용', err);
+  }
+
+  // 일반 차량
+  try {
+    const gltf = await loadModel([
+      'assets/compact-hatchback-386417.glb',
+      'https://polyfork.dev/cdn/compact-hatchback-386417.glb'
+    ]);
+    hatchSlots.forEach((slot, i) => {
+      const car = normalize(gltf.scene.clone(true), 4.05);
+      if (slot.tint && slot.tint !== '#ffffff') {
+        car.traverse((o) => {
+          if (o.isMesh) {
+            o.material = o.material.clone();
+            o.material.color = new THREE.Color(slot.tint);
+          }
+        });
+      }
+      const g = new THREE.Group();
+      g.add(car);
+      g.position.set(slot.x, 0, slot.z);
+      g.rotation.y = slot.rot + (i % 3 - 1) * 0.03;
+      world.add(g);
+    });
+  } catch (err) { console.warn('hatchback 로드 실패', err); }
+}
+
+/* ── 애니메이션 ────────────────────────────────────────────── */
+const clock = new THREE.Clock();
+
+function animate() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  // 위반 모드 페이드
+  vLevel += (vTarget - vLevel) * Math.min(1, dt * 7);
+  const vi = vLevel;
+  violationGroup.visible = vi > 0.012;
+
+  // 맥동 — sin(t*3)
+  const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+  ring.scale.setScalar(1 + 0.075 * Math.sin(t * 3));
+  torus.scale.setScalar(1 + 0.075 * Math.sin(t * 3));
+  ringMat.opacity = vi * (0.45 + 0.5 * pulse);
+  torusMat.opacity = vi * (0.5 + 0.4 * pulse);
+  sonar.scale.setScalar(1 + 0.30 * ((t * 0.5) % 1));
+  sonarMat.opacity = vi * 0.42 * (1 - ((t * 0.5) % 1));
+  floorGlow.material.opacity = vi * (0.16 + 0.24 * pulse);
+  blockGlow.material.opacity = vi * (0.24 + 0.3 * pulse);
+
+  alarmLight.intensity = vi * (8 + 9 * pulse);
+  suvMaterials.forEach((m) => { m.emissiveIntensity = vi * (0.04 + 0.13 * pulse); });
+
+  // 경로 점선 — 미세한 호흡
+  ribbonMat.opacity = vi * (0.86 + 0.12 * Math.sin(t * 1.6));
+  ribbonGlowMat.opacity = 0;
+  lineMat.opacity = vi * (0.72 + 0.16 * Math.sin(t * 1.6));
+
+  if (fireLabel) fireLabel.material.opacity = Math.max(0.001, vi);
+  blockBadge.material.opacity = Math.max(0.001, vi);
+
+  // 카메라 트윈
+  if (tween.active) {
+    // 프레임률과 무관하게 실제 시간 기준으로 진행 (백그라운드·저FPS에서도 동일)
+    tween.t = Math.min(1, (performance.now() - tween.startMs) / (tween.dur * 1000));
+    const e = easeInOut(tween.t);
+    camera.position.lerpVectors(tween.from.pos, tween.to.pos, e);
+    controls.target.lerpVectors(tween.from.target, tween.to.target, e);
+    camera.fov = tween.from.fov + (tween.to.fov - tween.from.fov) * e;
+    camera.updateProjectionMatrix();
+    if (tween.t >= 1) { tween.active = false; controls.enabled = true; }
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(animate);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ── 부트스트랩 ────────────────────────────────────────────── */
+if (params.get('hud') === '0') document.body.classList.add('no-hud');
+const startView = params.get('preset') === 'top' ? 'top' : 'entrance';
+snapCamera(INTRO);
+
+buildWorld().then(() => {
+  state.ready = true;
+  const loaderEl = document.getElementById('loader');
+  loaderEl.classList.add('hide');
+  setTimeout(() => loaderEl.remove(), 700);
+
+  if (params.get('violation') === '0') setViolation(false);
+  document.querySelectorAll('[data-view]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.view === startView);
+  });
+  state.preset = startView;
+
+  // 인트로: 살짝 물러난 지점 → 진입로 눈높이로 천천히
+  setTimeout(() => moveCamera(PRESETS[startView], 4.4), 220);
+});
+
+/* ── 검증용 핸들 ───────────────────────────────────────────── */
+const tagCount = () => {
+  const out = {};
+  world.traverse((o) => {
+    const tg = o.userData.tag;
+    if (tg) out[tg] = (out[tg] || 0) + 1;
+  });
+  return out;
+};
+window.__viewer = {
+  setPreset, setViolation, snapCamera, PRESETS,
+  get ready() { return state.ready; },
+  report() {
+    const tags = tagCount();
+    return {
+      ready: state.ready,
+      preset: state.preset,
+      violation: state.violation,
+      violationLevel: +vLevel.toFixed(3),
+      suvLoaded: !!suvGroup.userData.loaded,
+      camera: camera.position.toArray().map((v) => +v.toFixed(2)),
+      target: controls.target.toArray().map((v) => +v.toFixed(2)),
+      fov: +camera.fov.toFixed(1),
+      tags,
+      ringColor: '#' + ringMat.color.getHexString(),
+      check: {
+        floor: !!tags.floor,
+        stallLines: (tags['stall-line'] || 0) > 0,
+        fireZoneHatch: !!tags['fire-hatch'],
+        fireLabel: !!tags['fire-label'],
+        violationRing: !!tags.ring,
+        dashedPath: !!tags['path-line'] && (tags['path-dash'] || 0) > 0,
+        blockMarker: !!tags['block-marker'],
+        cameraPresets: Object.keys(PRESETS).length
+      }
+    };
+  }
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>사이(Sai) · 문서 출력</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #eef1f5; color: #101828;
+    font-family: "Noto Sans KR", -apple-system, "Malgun Gothic", sans-serif; font-variant-numeric: tabular-nums;
+  }
+  .bar {
+    position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; background: #0f172a; color: #fff; font-size: 12.5px; font-weight: 700;
+  }
+  .bar .sp { margin-left: auto; }
+  .bar button {
+    border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 900; font-size: 12px; cursor: pointer;
+    background: #f4f7ff; color: #0a0f16; font-family: inherit;
+  }
+  .page {
+    width: 210mm; min-height: 297mm; margin: 18px auto; background: #fff; padding: 16mm 15mm;
+    box-shadow: 0 10px 40px rgba(16, 24, 40, .12);
+  }
+  .head { display: flex; align-items: flex-start; gap: 12px; border-bottom: 2px solid #0f172a; padding-bottom: 12px; }
+  .mark { width: 34px; height: 34px; border-radius: 10px; background: #2f6bff; color: #fff;
+    display: grid; place-items: center; font-weight: 900; font-size: 16px; }
+  .head .who { font-size: 10.5px; color: #667085; font-weight: 700; letter-spacing: .02em; }
+  .head h1 { margin: 3px 0 0; font-size: 19px; letter-spacing: -.02em; }
+  .head .right { margin-left: auto; text-align: right; font-size: 10px; color: #667085; line-height: 1.6; }
+  h2 { font-size: 12px; letter-spacing: .08em; color: #475467; margin: 22px 0 8px; text-transform: uppercase; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th, td { border: 1px solid #e4e7ec; padding: 8px 10px; text-align: left; vertical-align: top; line-height: 1.55; }
+  th { width: 92px; background: #f9fafb; color: #475467; font-weight: 800; font-size: 10px; }
+  .letter { border: 1px solid #e4e7ec; border-left: 3px solid #2f6bff; background: #fbfcfe;
+    padding: 14px 16px; font-size: 11.5px; line-height: 1.95; white-space: pre-wrap; }
+  .summary { font-size: 11.5px; line-height: 1.85; color: #344054; }
+  .boundary { margin-top: 16px; padding: 10px 12px; background: #fffaeb; border: 1px solid #fedf89;
+    border-radius: 6px; font-size: 10px; color: #b54708; line-height: 1.6; }
+  .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid #e4e7ec;
+    display: flex; justify-content: space-between; font-size: 9.5px; color: #98a2b3; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0 4px; }
+  .kpi { border: 1px solid #e4e7ec; border-radius: 8px; padding: 10px 11px; }
+  .kpi .l { font-size: 9.5px; color: #667085; font-weight: 800; }
+  .kpi .v { font-size: 17px; font-weight: 900; margin-top: 4px; letter-spacing: -.02em; }
+  .kpi .n { font-size: 9px; color: #98a2b3; margin-top: 2px; }
+  .muted { color: #98a2b3; font-size: 10px; }
+  @media print {
+    body { background: #fff; }
+    .bar { display: none; }
+    .page { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span>사이(Sai) · 문서 출력</span>
+  <span class="sp"></span>
+  <span id="hint" style="color:#98a2b3;font-weight:600">Ctrl/Cmd + P 또는 아래 버튼 → PDF로 저장</span>
+  <button onclick="window.print()">PDF로 저장</button>
+  <button onclick="window.close()" style="background:rgba(255,255,255,.14);color:#fff">닫기</button>
+</div>
+<div class="page" id="page">불러오는 중…</div>
+
+<script type="module">
+import { esc } from "/js/api.js";
+
+const params = new URLSearchParams(location.search);
+const type = params.get("type") || "report";
+const caseId = params.get("case") || "C-003";
+const page = document.getElementById("page");
+
+const head = (title, sub, right) => `
+  <div class="head">
+    <div class="mark">사</div>
+    <div>
+      <div class="who">새들마을 3단지 관리사무소 · 「사이(Sai)」 자동 생성</div>
+      <h1>${esc(title)}</h1>
+      <div class="muted" style="margin-top:3px">${esc(sub)}</div>
+    </div>
+    <div class="right">${right}</div>
+  </div>`;
+
+const footer = (disclaimer) => `
+  <div class="foot">
+    <span>본 문서의 단지·세대·차량 정보는 모두 가상 데이터입니다.</span>
+    <span>${esc(disclaimer || "「사이」는 판단 보조 도구이며 최종 판단·처분은 관리주체·지자체·법원의 권한입니다.")}</span>
+  </div>`;
+
+try {
+  if (type === "brief") {
+    const [b, d] = await Promise.all([fetch("/api/briefing").then((r) => r.json()), fetch("/api/dashboard").then((r) => r.json())]);
+    const now = new Date();
+    page.innerHTML = `
+      ${head("주간 브리핑", `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, "0")}.${String(now.getDate()).padStart(2, "0")} 기준 · 오늘 접수 ${d.counts.today}건`, "관리사무소 주무 보고용")}
+      <div class="kpis">
+        ${d.kpis.map((k) => `<div class="kpi"><div class="l">${esc(k.label)}</div><div class="v">${esc(k.to)}</div><div class="n">${esc(k.from)} → ${esc(k.basis)}</div></div>`).join("")}
+      </div>
+      <h2>오늘 접수 · 처리 현황</h2>
+      <table>
+        <thead><tr><th style="width:auto;background:#f9fafb">접수</th><th style="width:auto;background:#f9fafb">유형</th><th style="width:auto;background:#f9fafb">상태</th><th style="width:auto;background:#f9fafb">처리(분)</th><th style="width:auto;background:#f9fafb">게이트</th></tr></thead>
+        <tbody>${d.cases.map((c) => `<tr><td>${esc(c.id)} · ${esc(c.received_at)}</td><td>${esc(c.kind_label)}</td><td>${esc(c.status)}</td><td>${c.processing_min}</td><td>${esc(c.gate)}</td></tr>`).join("")}</tbody>
+      </table>
+      <h2>요약 지표</h2>
+      <table><tbody>${b.rows.map((r) => `<tr><th>${esc(r.label)}</th><td>${esc(r.value)} · ${esc(r.note)}</td></tr>`).join("")}</tbody></table>
+      <h2>법령 인용 로그</h2>
+      <table><tbody>${d.citation_log.slice(0, 12).map((l) => `<tr><th>${esc((l.at || "").slice(11, 16))}</th><td>${esc(l.case_id)} · ${esc((l.docs || []).join(" · "))} · ${l.citations}건 · ${esc(l.event || "검색")}</td></tr>`).join("")}</tbody></table>
+      ${footer(d.disclaimer)}`;
+  } else {
+    const [c, rep] = await Promise.all([
+      fetch(`/api/case/${encodeURIComponent(caseId)}`).then((r) => r.json()),
+      fetch(`/api/case/${encodeURIComponent(caseId)}/report`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((r) => r.json()),
+    ]);
+    page.innerHTML = `
+      ${head("중재 보고서", `${c.id} · ${c.kind === "noise" ? "층간소음" : "불법·이중주차"} · 접수 ${esc(c.received_at.replace("T", " "))}`, `발행 ${esc((rep.issued_at || "").replace("T", " "))}<br>담당 ${esc(c.assignee || "관리소 주무")}`)}
+      <h2>사건 개요</h2>
+      <table><tbody>${rep.fields.map((f) => `<tr><th>${esc(f.label)}</th><td>${esc(f.value)}</td></tr>`).join("")}</tbody></table>
+      <h2>요약</h2>
+      <div class="summary">${esc(rep.summary || "")}</div>
+      <h2>조정문 (발송본)</h2>
+      <div class="letter">${esc(rep.letter || c.letter || "")}</div>
+      <div class="boundary">${esc(rep.boundary)}</div>
+      ${footer("")}`;
+  }
+  if (params.get("auto") === "1") setTimeout(() => window.print(), 500);
+} catch (err) {
+  page.innerHTML = `<p>문서를 불러오지 못했습니다 — ${esc(err.message)}</p>`;
+}
+</script>
+</body>
+</html>
